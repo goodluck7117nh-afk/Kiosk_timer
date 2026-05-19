@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>キオスク端末 利用時間計測</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d0f14;
+  --bg2: #151820;
+  --bg3: #1c202b;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.14);
+  --accent: #4e9eff;
+  --accent2: #2563eb;
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --text: #e8eaf0;
+  --text2: #8b91a1;
+  --text3: #4d5366;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Noto Sans JP', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+
+/* ── 来客カウンター ── */
+.counter-section {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.counter-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.counter-header h2 { font-size: 13px; font-family: var(--mono); color: var(--text2); font-weight: 400; }
+.counter-timer {
+  font-family: var(--mono); font-size: 13px; color: var(--text2);
+  background: var(--bg3); border-radius: 6px; padding: 4px 12px;
+}
+.counter-timer.running { color: var(--accent); }
+.counter-body {
+  display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
+}
+.counter-display {
+  text-align: center; flex-shrink: 0;
+}
+.counter-num {
+  font-family: var(--mono); font-size: 64px; font-weight: 600;
+  color: var(--text); line-height: 1; transition: transform 0.1s;
+}
+.counter-num.bump { transform: scale(1.15); color: var(--accent); }
+.counter-label { font-size: 11px; color: var(--text3); margin-top: 4px; font-family: var(--mono); }
+.counter-btn {
+  width: 100px; height: 100px; border-radius: 50%;
+  background: var(--accent2); border: none; cursor: pointer;
+  font-size: 40px; color: #fff; display: flex; align-items: center; justify-content: center;
+  transition: all 0.1s; flex-shrink: 0;
+  box-shadow: 0 4px 20px rgba(78,158,255,0.3);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.counter-btn:active { transform: scale(0.92); background: #1d4ed8; box-shadow: 0 2px 8px rgba(78,158,255,0.2); }
+.counter-btn:disabled { opacity: 0.3; cursor: default; box-shadow: none; }
+.counter-stats {
+  flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 160px;
+}
+.counter-stat {
+  background: var(--bg3); border-radius: 8px; padding: 8px 12px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.counter-stat-label { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.counter-stat-val { font-size: 14px; font-weight: 600; color: var(--text); font-family: var(--mono); }
+.counter-controls {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 1rem; padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.btn-counter-ctrl {
+  font-family: var(--sans); font-size: 12px; padding: 6px 14px;
+  border-radius: 6px; cursor: pointer; border: 1px solid var(--border2);
+  background: transparent; color: var(--text2); transition: all 0.15s;
+}
+.btn-counter-ctrl:hover { background: var(--bg3); }
+.btn-counter-ctrl.start { border-color: rgba(34,197,94,0.4); color: var(--green); }
+.btn-counter-ctrl.stop  { border-color: rgba(239,68,68,0.4); color: var(--red); }
+.btn-counter-ctrl:disabled { opacity: 0.3; cursor: default; }
+.counter-log {
+  margin-top: 0.75rem; padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text3); font-family: var(--mono);
+  max-height: 80px; overflow-y: auto;
+  display: none;
+}
+.counter-log.has-data { display: block; }
+
+.grid-bg {
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(rgba(78,158,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(78,158,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+.container {
+  position: relative; z-index: 1;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* Header */
+.header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.header-left h1 {
+  font-size: 20px; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--text);
+}
+.header-left p {
+  font-size: 12px; color: var(--text2); margin-top: 4px;
+  font-family: var(--mono);
+}
+.session-badge {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  text-align: center;
+}
+.session-badge span {
+  display: block;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--accent);
+  line-height: 1.2;
+}
+
+/* Meta inputs */
+.meta-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin-bottom: 1.5rem;
+}
+.field label {
+  display: block; font-size: 11px; font-family: var(--mono);
+  color: var(--text3); margin-bottom: 5px; letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.field input, .field select, .field textarea {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  border-color: var(--accent);
+}
+.field input::placeholder { color: var(--text3); }
+
+/* Phase timeline */
+.timeline { margin-bottom: 1.5rem; }
+.phase-item {
+  display: flex; align-items: stretch; gap: 0;
+  position: relative;
+}
+.phase-item:not(:last-child) .phase-connector { opacity: 1; }
+.phase-left {
+  display: flex; flex-direction: column; align-items: center;
+  width: 40px; flex-shrink: 0;
+}
+.phase-dot {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 2px solid var(--border2);
+  background: var(--bg2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--text3);
+  flex-shrink: 0;
+  transition: all 0.3s;
+  position: relative; z-index: 1;
+}
+.phase-dot.active {
+  border-color: var(--accent);
+  background: rgba(78,158,255,0.12);
+  color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(78,158,255,0.08);
+}
+.phase-dot.done {
+  border-color: var(--green);
+  background: rgba(34,197,94,0.12);
+  color: var(--green);
+}
+.phase-line {
+  width: 1px; flex: 1;
+  background: var(--border);
+  margin: 0 auto;
+  min-height: 20px;
+}
+.phase-line.done { background: rgba(34,197,94,0.4); }
+
+.phase-content {
+  flex: 1;
+  padding: 0 0 20px 16px;
+}
+.phase-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.3s, background 0.3s;
+}
+.phase-card.active { border-color: rgba(78,158,255,0.35); background: rgba(78,158,255,0.04); }
+.phase-card.done { border-color: rgba(34,197,94,0.2); }
+.phase-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.phase-name { font-size: 13px; font-weight: 500; color: var(--text); }
+.phase-ts {
+  font-family: var(--mono); font-size: 11px; color: var(--text2);
+  background: var(--bg3); border-radius: 4px; padding: 2px 8px;
+}
+.phase-sub { font-size: 11px; color: var(--text3); margin-bottom: 10px; }
+.phase-bottom { display: flex; align-items: center; justify-content: space-between; }
+.delta-label { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.delta-val {
+  font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text2);
+  transition: color 0.3s;
+}
+.delta-val.running { color: var(--accent); animation: pulse 1.5s ease-in-out infinite; }
+.delta-val.done-val { color: var(--green); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+.btn-phase {
+  font-family: var(--sans); font-size: 12px; font-weight: 500;
+  padding: 7px 16px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border2);
+  background: transparent; color: var(--text2);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-phase:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(78,158,255,0.08); }
+.btn-phase.active { border-color: var(--accent); color: #fff; background: var(--accent2); }
+.btn-phase.active:hover { background: var(--accent); }
+.btn-phase.done-btn { border-color: rgba(34,197,94,0.3); color: var(--green); cursor: default; }
+.btn-phase:disabled:not(.done-btn) { opacity: 0.3; cursor: default; }
+
+/* Summary */
+.summary-bar {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+.summary-metrics { display: flex; gap: 32px; }
+.metric { text-align: center; }
+.metric-label { font-size: 10px; font-family: var(--mono); color: var(--text3); margin-bottom: 2px; letter-spacing: 0.06em; text-transform: uppercase; }
+.metric-val { font-family: var(--mono); font-size: 16px; font-weight: 600; color: var(--text); }
+.metric-val.accent { color: var(--accent); }
+.metric-val.green { color: var(--green); }
+.total-block { text-align: right; }
+.total-label { font-size: 11px; color: var(--text2); margin-bottom: 2px; }
+.total-val { font-family: var(--mono); font-size: 28px; font-weight: 600; color: var(--text); }
+.total-val.running { color: var(--accent); }
+
+/* Notes */
+.notes-row { margin-bottom: 1.5rem; }
+.notes-row textarea { min-height: 60px; resize: vertical; line-height: 1.5; }
+
+/* Action buttons */
+.action-row {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+.btn {
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  padding: 9px 20px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border2);
+  background: transparent; color: var(--text);
+  display: flex; align-items: center; gap: 6px;
+  transition: all 0.15s;
+}
+.btn:hover { background: var(--bg3); border-color: var(--border2); }
+.btn-save {
+  background: rgba(34,197,94,0.1);
+  border-color: rgba(34,197,94,0.35);
+  color: var(--green);
+}
+.btn-save:hover { background: rgba(34,197,94,0.2); }
+.btn-save:disabled { opacity: 0.3; cursor: default; background: transparent; pointer-events: none; }
+.btn-reset { color: var(--text2); }
+.btn-export { color: var(--accent); border-color: rgba(78,158,255,0.25); }
+.btn-export:hover { background: rgba(78,158,255,0.08); }
+
+/* Log section */
+.log-section {}
+.log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.log-header h2 { font-size: 14px; font-weight: 500; color: var(--text); font-family: var(--mono); }
+.avg-chip {
+  font-family: var(--mono); font-size: 11px; color: var(--text2);
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 10px;
+}
+.avg-chip b { color: var(--accent); }
+
+.log-empty {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 2rem;
+  text-align: center; color: var(--text3);
+  font-family: var(--mono); font-size: 12px;
+}
+
+.log-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+table {
+  width: 100%; border-collapse: collapse;
+  font-size: 12px;
+}
+thead tr { background: var(--bg3); }
+thead th {
+  padding: 8px 12px; text-align: left;
+  font-family: var(--mono); font-size: 10px; font-weight: 400;
+  color: var(--text3); letter-spacing: 0.06em; text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+tbody tr:hover { background: rgba(255,255,255,0.02); }
+tbody tr:last-child { border-bottom: none; }
+tbody td { padding: 8px 12px; color: var(--text); font-family: var(--mono); white-space: nowrap; }
+td.notes-td { font-family: var(--sans); max-width: 120px; white-space: normal; word-break: break-all; color: var(--text2); font-size: 11px; }
+.badge {
+  display: inline-block; font-size: 10px; padding: 2px 8px;
+  border-radius: 4px; font-weight: 500; font-family: var(--mono);
+}
+.badge-ok { background: rgba(34,197,94,0.12); color: var(--green); }
+.badge-warn { background: rgba(245,158,11,0.12); color: var(--amber); }
+.badge-ng { background: rgba(239,68,68,0.12); color: var(--red); }
+
+/* Ticker */
+#ticker { display: none; font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="container">
+
+  <div class="header">
+    <div class="header-left">
+      <h1>🔲 キオスク端末 利用時間計測</h1>
+      <p id="nowClock">読み込み中...</p>
+    </div>
+    <div class="session-badge">
+      セッション数<span id="sessionCount">0</span>
+    </div>
+  </div>
+
+  <!-- 来客カウンター -->
+  <div class="counter-section">
+    <div class="counter-header">
+      <h2>// 来客カウンター</h2>
+      <div class="counter-timer" id="counterTimer">00:00:00</div>
+    </div>
+    <div class="counter-body">
+      <!-- 大カウント数 -->
+      <div class="counter-display">
+        <div class="counter-num" id="counterNum">0</div>
+        <div class="counter-label">来客数（人）</div>
+      </div>
+      <!-- タップボタン -->
+      <button type="button" class="counter-btn" id="counterTapBtn" onclick="tapCounter()" disabled title="来客1名をカウント">
+        +1
+      </button>
+      <!-- 統計 -->
+      <div class="counter-stats">
+        <div class="counter-stat">
+          <span class="counter-stat-label">計測開始</span>
+          <span class="counter-stat-val" id="counterStartTime">——</span>
+        </div>
+        <div class="counter-stat">
+          <span class="counter-stat-label">計測終了</span>
+          <span class="counter-stat-val" id="counterEndTime">——</span>
+        </div>
+        <div class="counter-stat">
+          <span class="counter-stat-label">経過時間</span>
+          <span class="counter-stat-val" id="counterElapsed">——</span>
+        </div>
+        <div class="counter-stat">
+          <span class="counter-stat-label">時間あたり</span>
+          <span class="counter-stat-val" id="counterRate">——</span>
+        </div>
+      </div>
+    </div>
+    <!-- コントロール -->
+    <div class="counter-controls">
+      <button type="button" class="btn-counter-ctrl start" id="btnCounterStart" onclick="startCounter()">▶ 計測開始</button>
+      <button type="button" class="btn-counter-ctrl stop"  id="btnCounterStop"  onclick="stopCounter()"  disabled>■ 計測終了</button>
+      <button type="button" class="btn-counter-ctrl" onclick="undoCounter()" id="btnCounterUndo" disabled>↩ 1件戻す</button>
+      <button type="button" class="btn-counter-ctrl" onclick="resetCounter()" style="color:var(--red);border-color:rgba(239,68,68,0.2);">✕ リセット</button>
+      <button type="button" class="btn-counter-ctrl" onclick="exportCounterCSV()" id="btnCounterExport" disabled>↓ CSV</button>
+    </div>
+    <!-- 履歴ログ -->
+    <div class="counter-log" id="counterLog"></div>
+  </div>
+
+  <div class="meta-row">
+    <div class="field">
+      <label>店舗 / 調査地点</label>
+      <input type="text" id="store" placeholder="例: 1号店 レジ前" />
+    </div>
+    <div class="field">
+      <label>調査員</label>
+      <input type="text" id="observer" placeholder="例: 田中" />
+    </div>
+  </div>
+
+  <div class="timeline" id="timeline"></div>
+
+  <div class="summary-bar">
+    <div class="summary-metrics">
+      <div class="metric">
+        <div class="metric-label">操作→注文</div>
+        <div class="metric-val" id="m1">——</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">注文→着席</div>
+        <div class="metric-val" id="m2">——</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">着席→提供</div>
+        <div class="metric-val" id="m3">——</div>
+      </div>
+    </div>
+    <div class="total-block">
+      <div class="total-label">合計所要時間</div>
+      <div class="total-val" id="totalVal">——</div>
+    </div>
+  </div>
+
+  <div class="notes-row">
+    <div class="field">
+      <label>備考・特記事項</label>
+      <textarea id="notes" placeholder="例: 混雑・トラブル・機器不具合など"></textarea>
+    </div>
+  </div>
+
+  <div class="action-row">
+    <button type="button" class="btn btn-save" id="btnSave" onclick="saveSession()" disabled>
+      ✓ 記録を保存
+    </button>
+    <button type="button" class="btn btn-reset" onclick="resetSession()">
+      ↺ リセット
+    </button>
+    <button type="button" class="btn btn-export" onclick="exportCSV()">
+      ↓ CSVエクスポート
+    </button>
+    <button type="button" class="btn" onclick="clearSessions()" style="color:var(--red);border-color:rgba(239,68,68,0.25);">
+      🗑 全記録削除
+    </button>
+  </div>
+
+  <div class="log-section">
+    <div class="log-header">
+      <h2>// 調査ログ</h2>
+      <div class="avg-chip" id="avgChip" style="display:none"></div>
+    </div>
+    <div id="logArea"><div class="log-empty">記録はまだありません</div></div>
+  </div>
+
+</div>
+
+<script>
+const PHASES = [
+  {
+    id: 'kiosk_start',
+    name: '端末操作 開始',
+    sub: '顧客がキオスク端末を操作し始めた瞬間',
+    btnLabel: '▶ 計測開始',
+    deltaLabel: null,
+    deltaPrev: null,
+  },
+  {
+    id: 'order_done',
+    name: '注文確定',
+    sub: '注文確定ボタン押下・レシート/番号券の発行',
+    btnLabel: '✓ 注文確定',
+    deltaLabel: '操作 → 注文',
+    deltaPrev: 'kiosk_start',
+  },
+  {
+    id: 'seat',
+    name: '着席確認',
+    sub: '顧客が席に着いたことを確認した時刻',
+    btnLabel: '✓ 着席確認',
+    deltaLabel: '注文 → 着席',
+    deltaPrev: 'order_done',
+  },
+  {
+    id: 'serve',
+    name: '商品提供',
+    sub: '商品がテーブルに届いた時刻（サービス完了）',
+    btnLabel: '✓ 商品提供',
+    deltaLabel: '着席 → 提供',
+    deltaPrev: 'seat',
+  },
+];
+
+let timestamps = {};
+let currentPhase = 0;
+let sessions = [];
+let tickInterval = null;
+let liveInterval = null;
+
+const STORAGE_KEY = 'kiosk_survey_sessions';
+
+function saveSessions() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch(e) {}
+}
+
+function loadSessions() {
+  try {
+    const d = localStorage.getItem(STORAGE_KEY);
+    if (d) sessions = JSON.parse(d);
+  } catch(e) { sessions = []; }
+}
+
+function clearSessions() {
+  if (!confirm('保存済みの全記録を削除しますか？')) return;
+  sessions = [];
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+  document.getElementById('sessionCount').textContent = 0;
+  renderLog();
+}
+
+function fmt(ms) {
+  if (ms == null || isNaN(ms)) return '——';
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m > 0 ? m + 'm' + String(sec).padStart(2,'0') + 's' : sec + 's';
+}
+function fmtTs(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+function fmtMs(ms) {
+  if (!ms) return 0;
+  return Math.round(ms / 1000);
+}
+
+function buildTimeline() {
+  const el = document.getElementById('timeline');
+  el.innerHTML = '';
+  PHASES.forEach((p, i) => {
+    const isDone = timestamps[p.id] != null;
+    const isActive = i === currentPhase;
+    const isLocked = i > currentPhase;
+
+    const dot = document.createElement('div');
+    dot.className = 'phase-dot' + (isDone ? ' done' : isActive ? ' active' : '');
+    dot.textContent = isDone ? '✓' : (i + 1);
+
+    const line = i < PHASES.length - 1 ? `<div class="phase-line${isDone ? ' done' : ''}"></div>` : '';
+
+    const left = document.createElement('div');
+    left.className = 'phase-left';
+    left.appendChild(dot);
+    left.insertAdjacentHTML('beforeend', line);
+
+    const cardClass = isDone ? 'done' : isActive ? 'active' : '';
+
+    let deltaHTML = '';
+    if (p.deltaLabel) {
+      let dval = '——', dvclass = '';
+      if (isDone) {
+        const prevTs = timestamps[p.deltaPrev];
+        if (prevTs) { dval = fmt(timestamps[p.id] - prevTs); dvclass = 'done-val'; }
+      } else if (isActive && timestamps[p.deltaPrev]) {
+        dval = '計測中...'; dvclass = 'running';
+      }
+      deltaHTML = `<div class="phase-bottom">
+        <div class="delta-label">${p.deltaLabel}</div>
+        <div class="delta-val ${dvclass}" id="delta-${i}">${dval}</div>
+      </div>`;
+    }
+
+    let btnHTML = '';
+    if (isDone) {
+      btnHTML = `<button class="btn-phase done-btn" disabled>記録済</button>`;
+    } else if (isActive) {
+      btnHTML = `<button class="btn-phase active" onclick="tapPhase(${i})">${p.btnLabel}</button>`;
+    } else {
+      btnHTML = `<button class="btn-phase" disabled>${p.btnLabel}</button>`;
+    }
+
+    const tsStr = isDone ? fmtTs(timestamps[p.id]) : '';
+
+    const content = document.createElement('div');
+    content.className = 'phase-content';
+    content.innerHTML = `
+      <div class="phase-card ${cardClass}">
+        <div class="phase-top">
+          <div class="phase-name">${p.name}</div>
+          <div class="phase-ts">${tsStr || p.sub.slice(0,12) + '...'}</div>
+        </div>
+        <div class="phase-sub">${p.sub}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          ${deltaHTML || '<div></div>'}
+          ${btnHTML}
+        </div>
+      </div>`;
+
+    const item = document.createElement('div');
+    item.className = 'phase-item';
+    item.appendChild(left);
+    item.appendChild(content);
+    el.appendChild(item);
+  });
+
+  updateSummary();
+  updateSaveBtn();
+}
+
+function tapPhase(i) {
+  if (i !== currentPhase) return;
+  timestamps[PHASES[i].id] = Date.now();
+  currentPhase = i + 1;
+  if (i === 0) startLive();
+  loadSessions();
+document.getElementById('sessionCount').textContent = sessions.length;
+renderLog();
+buildTimeline();
+}
+
+function startLive() {
+  clearInterval(liveInterval);
+  liveInterval = setInterval(() => {
+    updateSummary();
+    // update running delta
+    const el = document.getElementById('delta-' + currentPhase);
+    if (el && currentPhase > 0 && currentPhase < PHASES.length) {
+      const prevId = PHASES[currentPhase].deltaPrev;
+      if (timestamps[prevId]) {
+        el.textContent = fmt(Date.now() - timestamps[prevId]);
+        el.className = 'delta-val running';
+      }
+    }
+    if (currentPhase >= PHASES.length) clearInterval(liveInterval);
+  }, 500);
+}
+
+function updateSummary() {
+  const t = timestamps;
+  const m1El = document.getElementById('m1');
+  const m2El = document.getElementById('m2');
+  const m3El = document.getElementById('m3');
+  const tvEl = document.getElementById('totalVal');
+
+  if (t.kiosk_start && t.order_done) { m1El.textContent = fmt(t.order_done - t.kiosk_start); m1El.className = 'metric-val green'; }
+  else if (t.kiosk_start && currentPhase >= 1) { m1El.textContent = fmt(Date.now() - t.kiosk_start); m1El.className = 'metric-val accent'; }
+  else { m1El.textContent = '——'; m1El.className = 'metric-val'; }
+
+  if (t.order_done && t.seat) { m2El.textContent = fmt(t.seat - t.order_done); m2El.className = 'metric-val green'; }
+  else if (t.order_done && currentPhase >= 2) { m2El.textContent = fmt(Date.now() - t.order_done); m2El.className = 'metric-val accent'; }
+  else { m2El.textContent = '——'; m2El.className = 'metric-val'; }
+
+  if (t.seat && t.serve) { m3El.textContent = fmt(t.serve - t.seat); m3El.className = 'metric-val green'; }
+  else if (t.seat && currentPhase >= 3) { m3El.textContent = fmt(Date.now() - t.seat); m3El.className = 'metric-val accent'; }
+  else { m3El.textContent = '——'; m3El.className = 'metric-val'; }
+
+  if (t.kiosk_start && t.serve) {
+    tvEl.textContent = fmt(t.serve - t.kiosk_start);
+    tvEl.className = 'total-val';
+  } else if (t.kiosk_start) {
+    tvEl.textContent = fmt(Date.now() - t.kiosk_start);
+    tvEl.className = 'total-val running';
+  } else {
+    tvEl.textContent = '——';
+    tvEl.className = 'total-val';
+  }
+}
+
+function updateSaveBtn() {
+  const allDone = PHASES.every(p => timestamps[p.id] != null);
+  const btn = document.getElementById('btnSave');
+  btn.disabled = !allDone;
+  btn.style.pointerEvents = allDone ? 'auto' : 'none';
+}
+
+function saveSession() {
+  const store = document.getElementById('store').value.trim() || '未入力';
+  const observer = document.getElementById('observer').value.trim() || '——';
+  const notes = document.getElementById('notes').value.trim();
+  const t = timestamps;
+  const totalMs = t.serve - t.kiosk_start;
+
+  sessions.push({
+    id: sessions.length + 1,
+    date: new Date(t.kiosk_start).toLocaleDateString('ja-JP'),
+    time: fmtTs(t.kiosk_start),
+    store, observer,
+    kiosk_start: fmtTs(t.kiosk_start),
+    order_done: fmtTs(t.order_done),
+    seat: fmtTs(t.seat),
+    serve: fmtTs(t.serve),
+    d1: fmtMs(t.order_done - t.kiosk_start),
+    d2: fmtMs(t.seat - t.order_done),
+    d3: fmtMs(t.serve - t.seat),
+    total_s: fmtMs(totalMs),
+    totalMs,
+    notes,
+  });
+
+  document.getElementById('sessionCount').textContent = sessions.length;
+  saveSessions();
+  renderLog();
+  resetSession();
+}
+
+function resetSession() {
+  timestamps = {};
+  currentPhase = 0;
+  clearInterval(liveInterval);
+  document.getElementById('notes').value = '';
+  buildTimeline();
+}
+
+function renderLog() {
+  const area = document.getElementById('logArea');
+  if (sessions.length === 0) {
+    area.innerHTML = '<div class="log-empty">記録はまだありません</div>';
+    document.getElementById('avgChip').style.display = 'none';
+    return;
+  }
+
+  const avgMs = sessions.reduce((a, s) => a + s.totalMs, 0) / sessions.length;
+  const avgChip = document.getElementById('avgChip');
+  avgChip.style.display = '';
+  avgChip.innerHTML = '平均合計時間: <b>' + fmt(avgMs) + '</b>';
+
+  let rows = sessions.slice().reverse().map(s => {
+    const badgeClass = s.totalMs < 8*60000 ? 'badge-ok' : s.totalMs < 12*60000 ? 'badge-warn' : 'badge-ng';
+    const badgeLabel = s.totalMs < 8*60000 ? '順調' : s.totalMs < 12*60000 ? '長め' : '要確認';
+    return `<tr>
+      <td>${s.id}</td>
+      <td>${s.time}</td>
+      <td>${s.store}</td>
+      <td>${s.observer}</td>
+      <td>${s.d1}s</td>
+      <td>${s.d2}s</td>
+      <td>${s.d3}s</td>
+      <td><b>${fmt(s.totalMs)}</b></td>
+      <td><span class="badge ${badgeClass}">${badgeLabel}</span></td>
+      <td class="notes-td">${s.notes || ''}</td>
+    </tr>`;
+  }).join('');
+
+  area.innerHTML = `<div class="log-table-wrap">
+    <table>
+      <thead><tr>
+        <th>#</th><th>開始時刻</th><th>店舗</th><th>調査員</th>
+        <th>操作→注文</th><th>注文→着席</th><th>着席→提供</th>
+        <th>合計</th><th>評価</th><th>備考</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function exportCSV() {
+  if (sessions.length === 0) { alert('記録がありません。'); return; }
+  try {
+    const header = ['#','調査日','開始時刻','店舗','調査員','端末操作開始','注文確定','着席確認','商品提供','操作→注文(秒)','注文→着席(秒)','着席→提供(秒)','合計(秒)','備考'];
+    const rows = sessions.map(function(s) {
+      return [
+        s.id, s.date, s.time,
+        '"' + (s.store||'').replace(/"/g,'""') + '"',
+        '"' + (s.observer||'').replace(/"/g,'""') + '"',
+        s.kiosk_start, s.order_done, s.seat, s.serve,
+        s.d1, s.d2, s.d3, s.total_s,
+        '"' + (s.notes||'').replace(/"/g,'""') + '"'
+      ].join(',');
+    });
+    var csv = [header.join(',')].concat(rows).join('\n');
+    showCsvPanel(csv);
+  } catch(e) {
+    alert('CSV生成エラー: ' + e.message);
+  }
+}
+
+function showCsvPanel(csv) {
+  var existing = document.getElementById('csvFallback');
+  if (existing) existing.remove();
+
+  var div = document.createElement('div');
+  div.id = 'csvFallback';
+  div.style.cssText = 'margin-top:1.5rem;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;';
+
+  var hdr = document.createElement('div');
+  hdr.style.cssText = 'font-size:12px;color:var(--text2);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;font-weight:500;';
+  hdr.textContent = '// CSV データ';
+  var xbtn = document.createElement('button');
+  xbtn.type = 'button';
+  xbtn.textContent = '×';
+  xbtn.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px;line-height:1;padding:0 4px;';
+  xbtn.onclick = function(){ div.remove(); };
+  hdr.appendChild(xbtn);
+  div.appendChild(hdr);
+
+  var guide = document.createElement('div');
+  guide.style.cssText = 'background:var(--bg3);border-radius:6px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--text2);line-height:1.8;';
+  guide.innerHTML = '📋 <b style="color:var(--text)">下のテキストを全選択してコピー</b>し、<br>Excelまたはメモ帳に貼り付けてください。<br><span style="color:var(--text3);font-size:11px;">※ テキストエリアをタップ → 全選択 → コピー</span>';
+  div.appendChild(guide);
+
+  var ta = document.createElement('textarea');
+  ta.readOnly = true;
+  ta.style.cssText = 'width:100%;height:160px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--text);font-size:11px;resize:vertical;display:block;line-height:1.4;';
+  ta.value = csv;
+  div.appendChild(ta);
+
+  var copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.textContent = 'クリップボードにコピー';
+  copyBtn.style.cssText = 'margin-top:8px;font-size:13px;padding:8px 18px;border-radius:6px;cursor:pointer;border:1px solid rgba(78,158,255,0.4);background:rgba(78,158,255,0.1);color:var(--accent);display:block;';
+  copyBtn.onclick = function() {
+    ta.select();
+    ta.setSelectionRange(0, 99999);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch(e) {}
+    if (!ok) {
+      try {
+        navigator.clipboard.writeText(ta.value).then(function(){ copyBtn.textContent = '✓ コピー済'; });
+        return;
+      } catch(e2) {}
+    }
+    if (ok) { copyBtn.textContent = '✓ コピー済'; }
+    else { alert('テキストエリアを長押しして全選択→コピーしてください'); }
+  };
+  div.appendChild(copyBtn);
+
+  var logSection = document.querySelector('.log-section');
+  logSection.parentNode.insertBefore(div, logSection);
+  div.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Clock
+function updateClock() {
+  const d = new Date();
+  document.getElementById('nowClock').textContent =
+    d.toLocaleDateString('ja-JP') + '  ' +
+    d.toLocaleTimeString('ja-JP');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+
+// ── 来客カウンター ──
+var counterCount = 0;
+var counterStartMs = null;
+var counterEndMs = null;
+var counterRunning = false;
+var counterInterval = null;
+var counterLog = [];
+var counterSaved = null;
+
+var COUNTER_KEY = 'kiosk_counter_state';
+
+function saveCounter() {
+  try {
+    localStorage.setItem(COUNTER_KEY, JSON.stringify({
+      count: counterCount, startMs: counterStartMs, endMs: counterEndMs,
+      running: counterRunning, log: counterLog
+    }));
+  } catch(e) {}
+}
+
+function loadCounter() {
+  try {
+    var d = localStorage.getItem(COUNTER_KEY);
+    if (!d) return;
+    var s = JSON.parse(d);
+    counterCount = s.count || 0;
+    counterStartMs = s.startMs || null;
+    counterEndMs = s.endMs || null;
+    counterRunning = s.running || false;
+    counterLog = s.log || [];
+    updateCounterUI();
+    if (counterRunning) {
+      counterInterval = setInterval(tickCounter, 1000);
+      document.getElementById('counterTapBtn').disabled = false;
+      document.getElementById('btnCounterStart').disabled = true;
+      document.getElementById('btnCounterStop').disabled = false;
+      document.getElementById('btnCounterUndo').disabled = counterCount === 0;
+    } else if (counterStartMs) {
+      document.getElementById('btnCounterExport').disabled = false;
+      document.getElementById('btnCounterUndo').disabled = counterCount === 0;
+    }
+  } catch(e) {}
+}
+
+function startCounter() {
+  counterCount = 0;
+  counterStartMs = Date.now();
+  counterEndMs = null;
+  counterRunning = true;
+  counterLog = [];
+  document.getElementById('btnCounterStart').disabled = true;
+  document.getElementById('btnCounterStop').disabled = false;
+  document.getElementById('counterTapBtn').disabled = false;
+  document.getElementById('btnCounterUndo').disabled = true;
+  document.getElementById('btnCounterExport').disabled = true;
+  document.getElementById('counterTimer').classList.add('running');
+  document.getElementById('counterStartTime').textContent = new Date(counterStartMs).toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  document.getElementById('counterEndTime').textContent = '計測中...';
+  counterInterval = setInterval(tickCounter, 1000);
+  updateCounterUI();
+  saveCounter();
+}
+
+function stopCounter() {
+  counterEndMs = Date.now();
+  counterRunning = false;
+  clearInterval(counterInterval);
+  document.getElementById('btnCounterStop').disabled = true;
+  document.getElementById('counterTapBtn').disabled = true;
+  document.getElementById('counterTimer').classList.remove('running');
+  document.getElementById('btnCounterExport').disabled = false;
+  document.getElementById('counterEndTime').textContent = new Date(counterEndMs).toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  updateCounterUI();
+  saveCounter();
+}
+
+function tapCounter() {
+  if (!counterRunning) return;
+  counterCount++;
+  counterLog.push(Date.now());
+  document.getElementById('btnCounterUndo').disabled = false;
+  updateCounterUI();
+  saveCounter();
+  // アニメ
+  var el = document.getElementById('counterNum');
+  el.classList.remove('bump');
+  void el.offsetWidth;
+  el.classList.add('bump');
+  setTimeout(function(){ el.classList.remove('bump'); }, 150);
+}
+
+function undoCounter() {
+  if (counterCount <= 0) return;
+  counterCount--;
+  counterLog.pop();
+  document.getElementById('btnCounterUndo').disabled = counterCount === 0;
+  updateCounterUI();
+  saveCounter();
+}
+
+function resetCounter() {
+  if (counterRunning && !confirm('計測中です。リセットしますか？')) return;
+  clearInterval(counterInterval);
+  counterCount = 0; counterStartMs = null; counterEndMs = null;
+  counterRunning = false; counterLog = [];
+  document.getElementById('btnCounterStart').disabled = false;
+  document.getElementById('btnCounterStop').disabled = true;
+  document.getElementById('counterTapBtn').disabled = true;
+  document.getElementById('btnCounterUndo').disabled = true;
+  document.getElementById('btnCounterExport').disabled = true;
+  document.getElementById('counterTimer').textContent = '00:00:00';
+  document.getElementById('counterTimer').classList.remove('running');
+  document.getElementById('counterStartTime').textContent = '——';
+  document.getElementById('counterEndTime').textContent = '——';
+  document.getElementById('counterElapsed').textContent = '——';
+  document.getElementById('counterRate').textContent = '——';
+  document.getElementById('counterNum').textContent = '0';
+  var cl = document.getElementById('counterLog');
+  cl.textContent = ''; cl.classList.remove('has-data');
+  try { localStorage.removeItem(COUNTER_KEY); } catch(e) {}
+}
+
+function tickCounter() {
+  updateCounterUI();
+}
+
+function updateCounterUI() {
+  document.getElementById('counterNum').textContent = counterCount;
+  if (!counterStartMs) return;
+  var endMs = counterRunning ? Date.now() : (counterEndMs || Date.now());
+  var elapsedMs = endMs - counterStartMs;
+  var elapsedSec = Math.floor(elapsedMs / 1000);
+  var h = Math.floor(elapsedSec / 3600);
+  var m = Math.floor((elapsedSec % 3600) / 60);
+  var s = elapsedSec % 60;
+  var timerStr = (h > 0 ? String(h).padStart(2,'0') + ':' : '') + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  document.getElementById('counterTimer').textContent = timerStr;
+  var elapsedMin = elapsedMs / 60000;
+  document.getElementById('counterElapsed').textContent = h > 0
+    ? h + '時間' + m + '分' + s + '秒'
+    : m + '分' + s + '秒';
+  if (elapsedMin > 0 && counterCount > 0) {
+    var rate = (counterCount / elapsedMin).toFixed(1);
+    document.getElementById('counterRate').textContent = rate + '人/分';
+  } else {
+    document.getElementById('counterRate').textContent = '——';
+  }
+  // ログ更新（最新5件）
+  if (counterLog.length > 0) {
+    var cl = document.getElementById('counterLog');
+    cl.classList.add('has-data');
+    var recent = counterLog.slice(-5).reverse().map(function(ts, i) {
+      return '#' + (counterLog.length - i) + ' ' + new Date(ts).toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    });
+    cl.textContent = '最近のカウント: ' + recent.join('  ');
+  }
+}
+
+function exportCounterCSV() {
+  if (!counterStartMs) { alert('計測データがありません。'); return; }
+  try {
+    var startStr = new Date(counterStartMs).toLocaleString('ja-JP');
+    var endStr = counterEndMs ? new Date(counterEndMs).toLocaleString('ja-JP') : '計測中';
+    var elapsedMs = (counterEndMs || Date.now()) - counterStartMs;
+    var elapsedMin = (elapsedMs / 60000).toFixed(1);
+    var rate = counterCount > 0 && elapsedMs > 0 ? (counterCount / (elapsedMs / 60000)).toFixed(2) : '0';
+    var store = document.getElementById('store').value.trim() || '未入力';
+    var lines = [
+      '来客カウンター集計レポート',
+      '店舗,' + store,
+      '計測開始,' + startStr,
+      '計測終了,' + endStr,
+      '経過時間(分),' + elapsedMin,
+      '来客数(人),' + counterCount,
+      '来客率(人/分),' + rate,
+      '',
+      '# タイムスタンプ一覧',
+      '#,時刻'
+    ];
+    counterLog.forEach(function(ts, i) {
+      lines.push((i+1) + ',' + new Date(ts).toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit',second:'2-digit'}));
+    });
+    showCsvPanel(lines.join('\n'));
+  } catch(e) {
+    alert('CSV生成エラー: ' + e.message);
+  }
+}
+
+
+loadCounter();
+buildTimeline();
+</script>
+</body>
+</html>
